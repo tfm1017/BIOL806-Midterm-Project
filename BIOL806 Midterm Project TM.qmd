@@ -1,0 +1,711 @@
+---
+title: "Changes in Species Abundance and Richness at Barro Colorado Island"
+subtitle: "Mid Semester Project"
+author: "Trinity Minard"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  bookdown::pdf_document2:
+    keep_tex: true
+bibliography: 
+  - references.bib
+  - packages.bib
+csl: norsk-apa-manual.csl
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+# Abstract
+
+The biodiversity of an ecosystem is a key indicator of its health and
+resilience. In this study, plants in tropical and subtropical moist
+broad leaf forests biomes were analyzed for their total abundance across
+14 locations, using publicly available data from the BioTIME database.
+The analysis was then focused on one site, Barro Colorado Island located
+in Panama, where the abundance and species diversity was compared over
+time, from 1982 to 2015. Year to year turnover was assesed using
+Bray-Curtis dissimilarity, and species evenness was assessed using the
+Shannon Diveristy Index. It was found that BioTIME's dataset includes
+sites from seven different countries located in Asia, North America, and
+South America, with the highest total abundance recorded in Malaysia and
+Panama. At the Barro Colorado site, both total abundance and species
+diversity significantly decreased over time, whereas community
+dissimilarity and Shannon diversity did not significantly change over
+time. These findings suggest that there are potential environmental or
+human factors influencing the biodiversity of this study site, through
+decreased abundance and diversity, but the remaining community has
+remained stable.
+
+# Introduction
+
+Biodiversity refers to the variety of species, such as plant, animals,
+fungi, and microorganisms, within a given area. How these organisms
+interact with each other and the environment can heavily influence the
+health of an ecosystem. A healthy ecosystem supports a wide range of
+species by providing food, shelter, and clean air and water
+[@whyisf2022]. Forest across the world are responsible for supporting
+the majority of wildlife. According to the Food and Agriculture
+organization of the United Nations, forest support 68% of mammal
+species, 70% of bird species, and 80% of amphibian species
+[@faoandunep2020]. In certain ecosystems, such as tropical forest, trees
+and other woody plants play crucial roles in nutrient cycling,
+microclimate regulation, and providing habitats for other organisms
+[@pasion2018]. Therefore, studying the biodiversity of various areas is
+essential to not only broaden our understanding of ecosystems, but to
+support and maintain these important habitats.
+
+The Barro Colorado Island plot, located at Gatun Lake on the Panama
+Canal, was established in 1981 and contains over four hundred thousand
+trees with over three hundred species. The area has been censused eight
+times from 1983 to 2022 by the Smithsonian Tropical Research Institute
+and Princeton University [@aguilar], in which all free standing woody
+plants have been tagged and documented. Additionally, the research team
+has noted a high turnover in this area, with 40% of the tree species
+changing by more than 10% in total abundance over the course of just
+three years, from 1982 to 1985 [@aguilar]. This plot is known as the,
+"most-studied tropical forest in the world," [@saucedo2017], and thus,
+the data collected from this area provides the opportunity to study how
+biodiversity has changed over the past four decades in this area.
+
+This analysis may provide insight into how biodiversity has shifted due
+to environmental changes and human influence over a significant period
+of time. In this study, changes in species richness and total abundance
+were quantified using Bray-Curtis dissimilarity, Shannon Diversity
+index, and regression models. Because global temperatures have increased
+over the past four decades, which can influence species survivability
+and growth [@usepa2022], we hypothesize that species diversity and total
+abundance have decreased over time.
+
+# Methods
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#create list of packages to cite
+packages <- c("base", "tidyverse", "dplyr", "readr", "leaflet", "sf", "rnaturalearth", "janitor", "ggplot2", "vegan")
+#citing R and packages
+knitr::write_bib(packages, "packages.bib")
+```
+
+### Data Collection and Cleaning
+
+All data was acquired from the BioTIME database [@globald] and all
+analysis was performing using R and R Studio [@R-base]. The raw data,
+assigned to the variable `BioTIME_data`, was acquired by using BioTIME's
+"Build a Search" function and selecting for "Tropical and subtropical
+moist broad leaf forests" for biome and "Plants" for taxa. BioTIME's
+metadata csv, assigned to the variable `BioTIME_metadata`, was also
+downloaded for additional information on study sites.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#library packages 
+library(tidyverse)
+library(dplyr)
+library(readr)
+#library(leaflet)
+library(sf)
+library(rnaturalearth)
+library(janitor)
+library(ggplot2)
+library(vegan)
+library(rnaturalearthdata)
+library(viridis)
+library(bookdown)
+
+#import data files
+BioTIME_data <- read_csv("studies_data.csv")
+BioTIME_metadata <- read.csv("biotime_v2_metadata_2025.csv")
+
+#view BioTIME_data general information
+
+#summary(BioTIME_data)
+#str(BioTIME_data) 
+
+#summary(BioTIME_metadata)
+#str(BioTIME_metadata)
+
+#remove unneeded columns 
+BioTIME_data <- BioTIME_data %>%
+  select(-BIOMAS, -DEPTH, -SAMPLE_DESC)
+
+#class(BioTIME_data$YEAR)
+#class(BioTIME_metadata$STUDY_ID)
+```
+
+A `summary` of each data frame was run to gain information regarding the
+columns in each file. The BioTIME data contains information regarding
+the study site (Study ID), abundance, latitude and longitude, year, and
+name. Biomass and depth columns are available, but are primarily
+composed of NAs. Biomas, depth, and sample_desc columns were removed to
+excluded repeated data and NAs. The structure (`str`) of each file was
+then analyzed to view data types. All columns in `BioTIME_data` were
+numeric except for sample_desc and valid_name, which were characters.
+
+To further investigate information regarding the study IDs, data from
+BioTIME's metadata was imported. A list of study IDs from the original
+dataset was created, named `study_ID_list`, and `BioTIME_metadata` was
+filtered, using the dplyr package [@R-dplyr] from tidyverse
+[@R-tidyverse] for study IDs in this list and named `study_ID_metadata`.
+This data set was then filtered for only the following columns:
+study_ID, realm, climate, cen_latitude, cen_longitude, habitat,
+protected_area, area, and organisms. This new data set was named
+`filtered_metadata`.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#create a list containing the study IDs from BioTIME_data
+study_ID_list <- as.list(sort(unique(BioTIME_data$STUDY_ID)))
+
+#filter for these study IDs in the metadata
+study_ID_metadata <- BioTIME_metadata %>%
+  filter(STUDY_ID %in% study_ID_list)
+
+#remove unneeded columns 
+filtered_metadata <- study_ID_metadata[, c("STUDY_ID", "REALM", "CLIMATE", "CEN_LATITUDE", "CEN_LONGITUDE", "HABITAT", "PROTECTED_AREA", "AREA", "ORGANISMS")]
+```
+
+Then, a map was created using the leaflet package [@R-leaflet] to view
+where the study sites were located using their latitiude and longitude
+from the `filtered_metadata` file. Since this interactive map cannot be
+outputted in a pdf file, a map was also created using ggplot
+[@R-ggplot2] from the tidyverse package. A simple feature (sf) object
+from the rnaturalearth package [@R-rnaturalearth] and sf package [@R-sf]
+was imported, called `world`. The study sites were then added to a
+separate sf file, called `sites_sf`. Ggplot was then used to graph both
+sf objects, using `geom_sf`.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#create interactive map using leaflet 
+
+#leaflet() %>%
+ #addTiles() %>%
+#addMarkers(data = filtered_metadata, lng = ~CEN_LONGITUDE, lat = ~CEN_LATITUDE,   popup = ~STUDY_ID) %>%
+ #addControl(
+ #html = "<b>Map 1:</b> Location of Study Sites",
+ #position = "bottomleft")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#create a static map using ggplot
+
+#save world map as an object
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+#add study sites to an sf object
+sites_sf <- st_as_sf(filtered_metadata, coords = c("CEN_LONGITUDE", "CEN_LATITUDE"), crs = 4326)
+
+# use ggplot to graph/plot world and the study sites
+ggplot(data = world) +
+  geom_sf(fill = "antiquewhite") +
+  geom_sf(data = sites_sf, aes(color = STUDY_ID), size = 2.5) +
+  scale_color_viridis_c() +
+  coord_sf(xlim = c(-90, 130), ylim = c(-40, 50)) +
+  theme_minimal() +
+  labs(title = "Map 1. Study Sites") +
+  theme(legend.position = "none")
+```
+
+This map displays that the study sites are primarily located in South
+America and Asia. To compare across regions, country and continent
+columns were added to the `filtered_metadata` file. To do this, the
+simple feature (sf) frame, called `world`, was imported again from
+rnaturalearth. This sf object has coordinates associated with countries
+and continents. The latitude and longitude data points from the
+`filtered_metadata` file were converted to an sf object, and then these
+points were found in the `world` object and the country and continent
+information was assigned to another sf object named
+`points_with_country`. The geometry of the object was dropped,
+converting it back to a data frame, and these two columns were joined,
+using a left_join from dplyr, to `filtered_metadata` in a new data frame
+called `filtered_metadata_with_country`.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#convert the lat and long data points to an sf object 
+points_sf <- st_as_sf(filtered_metadata, coords = c("CEN_LONGITUDE", "CEN_LATITUDE"), crs = 4326)
+#load in world sf object from rnaturalearth
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+#join the world and points_sf objects
+points_with_country <- st_join(points_sf, world[, c("name", "continent")])
+
+#rename name as country and continent as Continent
+points_with_country$Country <- points_with_country$name
+points_with_country$Continent <- points_with_country$continent
+
+#drop the geometry 
+df_with_country <- st_drop_geometry(points_with_country)
+
+# Add back to original CSV data (if needed)
+filtered_metadata_with_country <- filtered_metadata %>%
+  left_join(df_with_country[, c("STUDY_ID", "Country", "Continent")], by = "STUDY_ID")
+```
+
+The two data files were then combined using left_join by study_id, and
+excluding the repeated latitude and longitude columns.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#join the two data frames
+combined_BioTIME_data <- left_join(
+  BioTIME_data,
+  filtered_metadata_with_country %>%
+    select(-CEN_LONGITUDE, -CEN_LATITUDE),  
+  by = "STUDY_ID")
+
+#convert STUDY_ID to a factor
+combined_BioTIME_data <- combined_BioTIME_data %>%
+  mutate(STUDY_ID = as.factor(STUDY_ID)) %>%
+  clean_names()
+
+#data frame information
+obs <- nrow(combined_BioTIME_data)   
+variables <- ncol(combined_BioTIME_data) 
+
+#head(combined_BioTIME_data)
+```
+
+The data frame, defined as `combined_BioTIME_data`, contains `r obs`
+observations of `r variables` variables, which was viewed using the
+`head` function. study_ID was also converted to a factor and
+`clean_names` from the janitor package [@R-janitor] was used to convert
+all column names to lowercase for simplicity.
+
+### Data Analysis
+
+#### Total Abundance by Country and Study Site
+
+Abundance was compared by location to gain a general understanding of
+the dataset. The data was grouped, using the dply function `group_by`,
+by country and continent, and data points without a country were
+excluded. A sum of the abundance was then calculated using the
+`summarize` function. This data was then graphed using the ggplot2
+package , with country on the x axis, abundance on the y axis, fill by
+continent, and `geom_col()` to create a bar graph, seen as Figure 1.
+Graph title, subtitle, and axis titles were added using the `labs`
+function to all graphs, and `themes` was used to center and bold titles.
+`Theme_classic` was also used for all graphs from ggplot2.
+
+Abundance was then compared between the study sites using the same
+methods, but grouping by study_id and plotting it on the x axis, seen in
+Figure 2.
+
+Since there were 14 study sites in this data set, only study site 60 was
+further analyzed for its diversity. This site, from
+`r combined_BioTIME_data$country[1]`, has a
+`r combined_BioTIME_data$habitat[1]` habitat, with
+`r combined_BioTIME_data$organisms[1]`. Data was collected from
+`r min(combined_BioTIME_data$year)` to
+`r max(combined_BioTIME_data$year)`. This data was analyzed for total
+abundance (Figure 3), species diversity (Figure 4), year to year species
+turnover (Figure 5), and Shannon diversity (Figure 6).
+
+To calculate total abundance by year for site 60,
+`combined_BioTIME_data` was filtered for when study_id was 60,
+`grouped_by` year, and the total abundance was summarized. This data was
+then assigned to the variable `abundance_ID60`. Year was then converted
+to a factor using the `mutate` function, from dplyr. Additionally, the
+minimum and maximum abundance values were assigned to variables
+`ab_div_min` and `ab_div_max`, and the year associated with this value
+was then saved under variables `ab_year_min` and `ab_year_max` so that
+they can be referenced as in line code. A linear regression was also run
+with `abundance` as the dependent variable, `year` as the independent
+variable, and using the data set `abundance_ID60`. A summary of the
+linear model was then assigned to the variable `abundance_60_lm`.
+
+The data was then graphed using ggplot with year on the x axis,
+abundance on the y axis, and color associated with year, seen in Figure
+3. `Geom_point`, `geom_line`, and `geom_smooth` (with `lm` method) were
+used to add data points, connecting lines, and a linear regression. The
+color palette `Dark_2` from `scale_color_brewer` was used for all of the
+following graphs. Species diversity, Figure 4, was plotted in the same
+way, but by summarizing the number of distinct species in the column
+`valid_name,` instead of abundance.
+
+Species turnover was calculated using a Bray-Curtis index.
+`combined_BioTIME_data` was first filtered for study site 60. Then year,
+abundance, and valid_name were selected, and the data frame was named
+`ID60_data`. These columns were then pivoted, using `pivot_wider` from
+the tidyr package, with names from valid_name and values from abundance.
+This created one column for year, and then a column for each species.
+Another data frame was then created by removing the year column and
+running a `vegdist` (method = `bray`), from the vegan package
+[@R-vegan]. This data frame was then converted to a matrix, named
+`year_turnover`, and the yearly turnover was calculated by first
+removing the first row and last column to shift the matrix and using
+`diag()` to compare turnover for consecutive years. These values were
+then added to a new data frame, named `turnover_data`. Years were
+extracted from `ID60_data`, and "from years" (year1) were found by
+removing the last year from the data frame, while the "to years" (year2)
+were found by removing the first year from the data frame. Turnover
+values from `year_turnover` were then added as a column to the data
+frame. An additional column was then added that multiplied the turnover
+values by 100 and rounded to two decimal places to add a percent
+turnover column. A linear regression was calculated and a summary was
+assigned to the variable `turnover_lm`. Species turnover was graphed the
+same way as the previous two graphs, using ggplot, with year2 as the x
+axis, turnover percent on the y axis, and color by year2, however, a
+"LOESS" model was used instead of a linear regression ("lm").
+
+To calculate Shannon Diversity, `ID60_data` was analyzed row by row
+using `rowwise()`. The abundance values by row were collected, using
+`c_across`, excluding the year column, and the diversity "shannon" index
+from the vegan package was used to add a new column named `shannon` to
+the new data frame, `shannon_data`. A linear regression was calculated
+for the entire data set, and for years before (and including) 1995, and
+post 1995, by filtering the `shannon_data`. This data was graphed in the
+same way as the previous graph, with year on the x axis (as a factor),
+Shannon values on the y axis, and color by year.
+
+# Results
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#collect the appropriate data and calculate total abundance
+abundance_by_country <- combined_BioTIME_data %>%
+  filter(!is.na(country)) %>%
+  group_by(country, continent) %>%
+  summarize(abundance = sum(abundance, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r fig-abundance-country, fig.cap="Total abundance of species by country.", echo=FALSE, warning=FALSE, message=FALSE}
+
+#create a bar graph containing country, continent, and abundance information
+ggplot(data = abundance_by_country, mapping = aes(x = country, y = abundance, fill = continent)) +
+  geom_col() +
+theme_classic() +
+scale_fill_brewer(palette = "Paired") +
+labs(
+  title = "Total Abundance by Country",
+  x = "Country",
+  y = "Total Abundance",
+  fill = "Continent") +
+theme(legend.position = c(0.2, 0.7)) +
+theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+abundance_by_site <- combined_BioTIME_data %>%
+  filter(!is.na(country)) %>%
+  group_by(study_id, country) %>%
+  summarize(abundance = sum(abundance, na.rm = TRUE)) %>%
+  ungroup()
+
+#number of study sites
+num_study_id <- length(unique(abundance_by_site$study_id))
+```
+
+```{r fig-abundance-study-id, fig.cap="Total abundance of species by study site.", echo=FALSE, warning=FALSE, message=FALSE}
+
+#create a bar graph containing study ID, country, and abundance information
+ggplot(data = abundance_by_site, mapping = aes(x = study_id, y = abundance, fill = country)) +
+  geom_col() +
+theme_classic() +
+scale_fill_brewer(palette = "Paired") +
+labs(
+  title = "Total Abundance by Study Site",
+  x = "Study Site",
+  y = "Total Abundance",
+  fill = "Country") +
+theme(legend.position = c(0.9, 0.6)) +
+theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#calculate total abundance after filtering for site 60 and grouping by year
+abundance_ID60 <- combined_BioTIME_data %>%
+  filter(study_id == "60") %>%
+  group_by(year) %>%
+  summarize(abundance = sum(abundance, na.rm = TRUE)) %>%
+  ungroup()
+
+#convert year to a factor for graphing
+abundance_by_year_ID60 <- abundance_ID60 %>%
+ mutate(year = as.factor(gsub(",", "", year)))
+
+#assign the max and min abundance to variables for in line code
+ab_div_min <- min(abundance_by_year_ID60$abundance)
+ab_div_max <- max(abundance_by_year_ID60$abundance)
+
+#assign the max and min abundance years to variables for in line code
+ab_year_min <-abundance_by_year_ID60$year[which(abundance_by_year_ID60$abundance == ab_div_min)]
+ab_year_max <-abundance_by_year_ID60$year[which(abundance_by_year_ID60$abundance == ab_div_max)]
+
+#linear regression
+a60_lm <- lm(abundance ~ year, data = abundance_ID60)
+abundance_60_lm <- summary(a60_lm)
+```
+
+```{r fig-study-60-abundance, fig.cap="Total abundance of species at The Barro Colorado Island from 1982 to 2015. A linear regression (lm) was fitted to highlight trends in abundance.", echo=FALSE, warning=FALSE, message=FALSE}
+
+#create a bar graph comparing total abundance by year for site 60
+ggplot(data = abundance_by_year_ID60, mapping = aes(x = year, y = abundance, color = year, group = 1)) +
+  geom_point(size = 4) +
+  geom_line(color = "darkgrey") +
+  geom_smooth(method = 'lm', se= TRUE, color = 'darkgray', linewidth = 1) +
+theme_classic() +
+scale_color_brewer(palette = "Dark2") +
+labs(
+  title = "Total Abundance",
+  subtitle = "By Year at Barro Colorado Island",
+  x = "Year",
+  y = "Total Abundance",
+  fill = "Country") +
+theme(legend.position = "none") +
+theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold")) +
+theme(plot.subtitle = element_text(hjust = 0.5, size = 12, face = "italic"))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#species diversity
+
+#calculate species diversity after filtering for site 60 and grouping by year
+species_diversity_ID60 <- combined_BioTIME_data %>%
+  filter(study_id == "60") %>%
+  group_by(year) %>%
+  summarize(richness = n_distinct(valid_name)) %>%
+  ungroup
+
+#convert year to a factor for graphing
+species_diversity_by_year_ID60  <- species_diversity_ID60  %>%
+ mutate(year = as.factor(gsub(",", "", year)))
+
+#assign the max and min species diversity to variables for in line code
+sp_div_min <- min(species_diversity_by_year_ID60$richness)
+sp_div_max <- max(species_diversity_by_year_ID60$richness)
+
+#assign the max and min species diversity years to variables for in line code
+sp_div_year_min <-species_diversity_by_year_ID60$year[which(species_diversity_by_year_ID60$richness == sp_div_min)]
+sp_div_year_max <-species_diversity_by_year_ID60$year[which(species_diversity_by_year_ID60$richness == sp_div_max)]
+
+#linear regression
+sp_div_lm <- lm(richness ~ year, data = species_diversity_ID60)
+species_diversity_lm <- summary(sp_div_lm)
+```
+
+```{r fig-study-60-diversity, fig.cap="Number of Distinct Species from 1982 to 2015. A linear regression (lm) was fitted to highlight trends in species diversity.", echo=FALSE, warning=FALSE, message=FALSE}
+
+#create a bar graph comparing species diversity by year for site 60
+ggplot(data = species_diversity_by_year_ID60, mapping = aes(x = year, y = richness, color = year, group = 1)) +
+  geom_point(size = 4) +
+  geom_line(color = "darkgrey") +
+  geom_smooth(method = 'lm', se= TRUE, color = 'darkgray', linewidth = 1) +
+theme_classic() +
+scale_color_brewer(palette = "Dark2") +
+scale_y_continuous(breaks = seq(min(species_diversity_by_year_ID60$richness), max(species_diversity_by_year_ID60$richness), by = 2)) +
+labs(
+  title = "Species Diversity",
+  subtitle = "By Year at Barro Colorado Island",
+  x = "Year",
+  y = "Species Diversity",
+  fill = "Country") +
+theme(legend.position = "none") +
+theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold")) +
+theme(plot.subtitle = element_text(hjust = 0.5, size = 12, face = "italic"))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Species Turnover
+#author note: I have not calculated species turnover using Bray Curtis before, so I am not sure if I have done the calculations correctly.
+
+#filter the data for site 60, then select year, abundance, and species columns. pivot wide so that the species are the column names and each row is a year.
+ID60_data <- combined_BioTIME_data %>%
+  filter(study_id == "60") %>%
+  select(year, abundance, valid_name) %>%
+  pivot_wider(
+    names_from = valid_name,
+    values_from = abundance, 
+    values_fill = 0)
+
+#Find Bray_Curtis dissimilarity 
+sim_data <- ID60_data %>%
+  select(-year)
+bray_dist <- vegdist(sim_data, method = "bray")
+
+#extract year to year turnover
+bray_matrix <- as.matrix(bray_dist)
+year_turnover <- diag(bray_matrix[-1, -nrow(bray_matrix)])
+
+#convert to a dataframe
+turnover_data <- data.frame(
+  year1 = ID60_data$year[-nrow(ID60_data)],
+  year2 = ID60_data$year[-1],
+  turnover = year_turnover)
+
+#convert to percentage
+turnover_data <- turnover_data %>%
+  mutate(turnover_pct = round(turnover * 100, 2))
+
+#linear regression
+trnovr_lm <- lm(turnover_pct ~ year2, data = turnover_data)
+turnover_lm <- summary(trnovr_lm)
+
+#save the average 
+mean_turnover_pct <- mean(turnover_data$turnover_pct, na.rm = TRUE)
+```
+
+```{r fig-study-60-turnover, fig.cap="Species year to year turnover at The Barro Colorado Island. Percent dissimilarity between consecuative years was calculated using a Bray-Curtis index based on species abundance from 1982 to 2015. A LOESS smoothing curve was applied to highlight trends, where peak represent decreased similiarities in species composition.", echo=FALSE, warning=FALSE, message=FALSE}
+
+#graph species turnover using ggplot
+ggplot(turnover_data, aes( x = factor(year2), y = turnover_pct, color = factor(year2), group = 1)) +
+  geom_line(color = "darkgrey") +
+  geom_point(size = 4) +
+  geom_smooth(method = "loess", se = TRUE, color = "darkgrey") +
+  theme_classic() +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Year to Year Species Turnover",
+    subtitle = "At Barro Colorado Island",
+    x = "Year",
+    y = "Percent Difference") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold")) +
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 12, face = "italic")) +
+  theme(legend.position = "none")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Shannon Diversity 
+shannon_data <- ID60_data %>%
+  rowwise() %>%
+  mutate(shannon = diversity(c_across(-year), index = "shannon")) %>%
+  ungroup()
+
+#linear regression
+sd_lm <- lm(shannon ~ year, data = shannon_data)
+shannon_lm <- summary(sd_lm)
+
+#linear regression by time period
+pre_1995 <- shannon_data %>%
+  filter(year <= 1995)
+post_1995 <- shannon_data %>%
+  filter(year > 1995)
+
+pre1995_lm <- lm(shannon ~ year, data = pre_1995)
+post1995_lm <-lm(shannon ~ year, data = post_1995)
+
+pre_1995_lm <- summary(pre1995_lm)
+post_1995_lm <- summary(post1995_lm)
+```
+
+```{r fig-study-60-shannon, fig.cap="Shannon Diversity at The Barro Colorado Island. A LOESS smoothing curve was applied to highlight trends in diversity.", echo=FALSE, warning=FALSE, message=FALSE}
+#graph species turnover using ggplot
+ggplot(shannon_data, aes( x = factor(year), y = shannon, color = factor(year), group = 1)) +
+  geom_line(color = "darkgrey") +
+  geom_point(size = 4) +
+  geom_smooth(method = "loess", se = TRUE, color = "darkgrey") +
+  theme_classic() +
+  #scale_y_continuous(limits = c(3.9, 4.05)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Shannon Diversity",
+    subtitle = "At Barro Colorado Island",
+    x = "Year",
+    y = "Shannon Diversity Index (H')") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold")) +
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 12, face = "italic")) +
+  theme(legend.position = "none")
+```
+
+# Discussion
+
+BioTIME's database contains ample information on species in various
+habitats across the world. This study focused on plants in tropical and
+subtropical moist broad leaf forests, and was then narrowed down to one
+study site, The Barro Colorado Island (Study Site #60). The surveyed
+forests, from 14 study sites, were distributed across Asia, North
+America, and South America, across 7 different countries, seen in
+Figure 1. Malaysia and Panama had the greatest total abundance across
+all species and years, at
+`r format(abundance_by_country$abundance[abundance_by_country$country == "Malaysia"], big.mark = ",", scientific = FALSE)`
+and
+`r format(abundance_by_country$abundance[abundance_by_country$country == "Panama"], big.mark = ",", scientific = FALSE)`
+organisms, respectively. Total abundance was then graphed by study site,
+seen in Figure 2, in which study site 60 had the greatest abundance, and
+was the only study in Panama.
+
+Study site 60 was then further analyzed to investigate the total
+abundance and diversity over time, from 1982 to 2015. Total abundance
+was graphed by year, seen in Figure 3, and displayed a overall decrease
+in total abundance over time (p =
+`r signif(abundance_60_lm$coefficients[2,4], 3)`, R^2^ =
+`r round(abundance_60_lm$r.squared, 3)`) when using a linear regression.
+This shift was first observed in 1990, with a significant decrease in
+total abundance from
+`r format(abundance_by_year_ID60$abundance[abundance_by_year_ID60$year == "1990"], big.mark = ",", scientific = FALSE)`
+organisms in 1990 to
+`r format(abundance_by_year_ID60$abundance[abundance_by_year_ID60$year == "2000"], big.mark = ",", scientific = FALSE)`
+in 2000. Species diversity, seen in Figure 4, also showed an overall
+trend of decreased number of distinct species (p =
+`r format(signif(species_diversity_lm$coefficients[2,4], 3), scientific = FALSE)`,
+R^2^ = `r round(species_diversity_lm$r.squared, 3)`) when using a linear
+regression. The number of species decreased from
+`r format(species_diversity_by_year_ID60$richness[species_diversity_by_year_ID60$year == "1982"], big.mark = ",", scientific = FALSE)`
+in 1998 to
+`r format(species_diversity_by_year_ID60$richness[species_diversity_by_year_ID60$year == "2015"], big.mark = ",", scientific = FALSE)`
+in 2015.
+
+Changes in the number of distinct species was then further analyzed
+using Bray-Curtis Dissimilarity. This index is used to quantify the
+differences in species populations across different communities, such as
+different sites or time points [@braycur2018]. This can be represented
+as year to year turnover, by calculating the change in species
+populations between years. The index utilized 0 when the communities are
+identical, and 1 when the communities have none of the same species.
+This number was calculated between each year and then represented, in
+Figure 5, as a percentage. A LOESS regression was used to visualize
+trends in the percent dissimilarity. A linear regression was also used,
+which displays no significant change in dissimilarity from 1985 to 2025
+(p =
+`r format(signif(turnover_lm$coefficients[2,4], 3), scientific = FALSE)`,
+R^2^ = `r round(turnover_lm$r.squared, 3)`). The similarity of species
+between years was also very high, with only an average of
+`r round(mean_turnover_pct, 1)`% difference in species population across
+all years. The Shannon Equability Index was then used to analyze how
+similar the abundance of each species is in the community
+[@bobbitt2021]. Similar to the Bray-Curtis index, there was no overall
+significant trend when using a linear regression (p =
+`r format(signif(shannon_lm$coefficients[2,4], 3), scientific = FALSE)`,
+R^2^ = `r round(shannon_lm$r.squared, 3)`), however, a LOESS regression
+displayed a general decrease in diversity from 1982 to 1995 and an
+increase after 1995. An additional linear regression was run for years
+up to and including 1995, and another regression for years after 1995.
+It was found that there was no significant trend before 1995, (p =
+`r format(signif(pre_1995_lm$coefficients[2,4], 3), scientific = FALSE)`,
+R^2^ = `r round(pre_1995_lm$r.squared, 3)`), but there was a significant
+increase after 1995 (p =
+`r format(signif(post_1995_lm$coefficients[2,4], 3), scientific = FALSE)`,
+R^2^ = `r round(post_1995_lm$r.squared, 3)`). This shift suggests that
+something occurred between 1995 and 2000 which supported the evenness of
+abundance of species. The Shannon index was the highest in 2015, at
+`r format(round(shannon_data$shannon[shannon_data$year == "2015"], 2), big.mark = ",", scientific = FALSE)`,
+which displays that Barro Colorado Island has a very diverse ecosystem
+of plants.
+
+Both total abundance and species diversity have decreased from 1982 to
+2015 at the Barro Colorado Study Site, supporting the hypothesis.
+Bray-Curtis and Shannon Diversity suggests that the similarity of
+species has remained consistent, and the evenness of abundance has
+increased, suggesting that the ecosystem has become more homogeneous
+with time. While these results support the hypothesis, there is no
+direct correlation in this study that suggests that the cause of this
+decrease is the result of rising global temperatures. Additional
+temperature data from Barro Colorado Island across this time span is
+needed to detect any potential correlations. Access to resources, such
+as nutrient and water, could have been impacted by other environmental
+factors or natural disasters. This study site also hosts day tours,
+which include boat tours and rain forest hikes. While likely minimal,
+the impact of tourism on the site could also be studied.
+
+# Conclusion
+
+At the Barro Colorado Study Site in the Panama Canal, total abundance
+and species diversity have significantly decreased from 1982 to 2015,
+while species turnover and Shannon Diversity have not significantly
+changed. The decreases in species and abundance does align with other
+studies, such as reports from the Environmental Protection Agency
+[@usepa2022], and could be the result of rising global temperatures.
+Continuing this analysis on the other 13 study sites would provide more
+insight as to if these same trends are observed in other parts of the
+world. Ultimately, determining the cause of this decrease in
+biodiversity is essential for us to learn how to protect the Barro
+Colorado forests and other ecosystems across the globe.
+
+------------------------------------------------------------------------
+
+# References
